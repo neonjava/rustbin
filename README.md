@@ -83,7 +83,7 @@ Language values: `text`, `rust`, `java`, `c`, `cpp`, `python`, `javascript`, `ty
 2. Create a runtime service account with `roles/datastore.user`. Set up GitHub Actions Workload Identity Federation for `neonjava/rustbin` and a deploy service account with permissions for Cloud Build, Artifact Registry, Cloud Run deployment, Firebase Hosting deployment, and `iam.serviceAccounts.actAs` on the runtime account. Scope these grants to the project and resources as narrowly as practical.
 3. Set GitHub environment `production` variables: `GCP_PROJECT_ID`, `GCP_REGION` (`us-central1` to match `firebase.json`), `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SERVICE_ACCOUNT`, `GCP_RUNTIME_SERVICE_ACCOUNT`.
 4. Run the `Deploy` workflow or push to `main` after CI succeeds. The workflow builds a container, deploys `rustbin-api`, and deploys Hosting. Change both `firebase.json` rewrite regions if deploying Cloud Run elsewhere. Cloud Run is publicly invokable so Hosting can reach it; use ingress and edge controls appropriate to your deployment.
-5. Visit `https://PROJECT_ID.web.app/` and verify create, open, raw, expiration, and deletion with actual test pastes.
+5. Visit `https://rustbin-fa262.web.app/` and verify create, open, raw, expiration, and deletion with actual test pastes.
 
 The Docker image is a multi-stage Rust build with a non-root runtime. Locally: `docker build -t rustbin .` then run with `FIREBASE_PROJECT_ID` and an accessible credential or emulator. Hosting serves `public/`; `/api/**` and `/raw/**` rewrite to Cloud Run; other paths serve `index.html`.
 
