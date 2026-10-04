@@ -147,7 +147,7 @@ async fn create<S: PasteStore>(
             content: input.content.clone(),
             language: input.language.clone(),
             created_at: now,
-            expires_at: expires_at.clone(),
+            expires_at,
             delete_token_hash: security::hash_token(&token),
             views: 0,
         };
