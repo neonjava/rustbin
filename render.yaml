@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: rustbin
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: FIREBASE_PROJECT_ID
+        value: rustbin-fa262
+      - key: RUSTBIN_HOST
+        value: 0.0.0.0
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        value: /etc/secrets/firestore.json
+      - key: RUST_LOG
+        value: info

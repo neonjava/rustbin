@@ -6,3 +6,5 @@
 !.env.example
 .firebase
 *.log
+firestore.json
+*.secret.json

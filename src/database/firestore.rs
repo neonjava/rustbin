@@ -2,15 +2,23 @@ use super::PasteStore;
 use crate::model::Paste;
 use anyhow::{Context, anyhow};
 use chrono::{DateTime, Utc};
+use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use reqwest::{Client, StatusCode};
 use serde_json::{Value, json};
-use std::{env, path::PathBuf};
+use std::{
+    env,
+    path::PathBuf,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+use tokio::sync::Mutex;
 
 #[derive(Clone)]
 pub struct Firestore {
     client: Client,
     base: String,
     emulator: bool,
+    token_cache: Arc<Mutex<Option<(Instant, String)>>>,
 }
 
 impl Firestore {
@@ -23,6 +31,7 @@ impl Firestore {
             client: Client::new(),
             base: format!("{base}/v1/projects/{project}/databases/(default)/documents/pastes"),
             emulator: emulated,
+            token_cache: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -30,67 +39,105 @@ impl Firestore {
         if self.emulator {
             return Ok(None);
         }
-        let metadata = self.client.get("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token")
-            .header("Metadata-Flavor", "Google").timeout(std::time::Duration::from_secs(2)).send().await;
-        if let Ok(response) = metadata
-            && response.status().is_success()
+        let mut cache = self.token_cache.lock().await;
+        if let Some((until, token)) = cache.as_ref()
+            && Instant::now() < *until
         {
-            let value: Value = response.json().await?;
-            return Ok(Some(
-                value["access_token"]
-                    .as_str()
-                    .context("metadata access token missing")?
-                    .to_owned(),
-            ));
+            return Ok(Some(token.clone()));
         }
-        let path = env::var_os("GOOGLE_APPLICATION_CREDENTIALS")
-            .map(PathBuf::from)
-            .or_else(|| {
-                env::var_os("HOME").map(|home| {
-                    PathBuf::from(home).join(".config/gcloud/application_default_credentials.json")
-                })
-            })
-            .context("Application Default Credentials not found")?;
+        let configured = env::var_os("GOOGLE_APPLICATION_CREDENTIALS").map(PathBuf::from);
+        let (token, seconds) = if let Some(path) = configured {
+            self.file_access_token(path).await?
+        } else {
+            let metadata = self.client.get("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token")
+                .header("Metadata-Flavor", "Google").timeout(Duration::from_secs(2)).send().await;
+            if let Ok(response) = metadata
+                && response.status().is_success()
+            {
+                token_fields(response.json().await?)?
+            } else {
+                let path = env::var_os("HOME")
+                    .map(|home| {
+                        PathBuf::from(home)
+                            .join(".config/gcloud/application_default_credentials.json")
+                    })
+                    .context("Application Default Credentials not found")?;
+                self.file_access_token(path).await?
+            }
+        };
+        *cache = Some((
+            Instant::now() + Duration::from_secs(seconds.saturating_sub(60)),
+            token.clone(),
+        ));
+        Ok(Some(token))
+    }
+
+    async fn file_access_token(&self, path: PathBuf) -> anyhow::Result<(String, u64)> {
         let credentials: Value = serde_json::from_slice(&tokio::fs::read(path).await?)?;
-        anyhow::ensure!(
-            credentials["type"] == "authorized_user",
-            "local ADC must be authorized_user; Cloud Run uses metadata identity"
-        );
-        let form = [
-            ("grant_type", "refresh_token"),
-            (
-                "client_id",
-                credentials["client_id"]
+        let response = match credentials["type"].as_str() {
+            Some("authorized_user") => {
+                let form = [
+                    ("grant_type", "refresh_token"),
+                    (
+                        "client_id",
+                        credentials["client_id"]
+                            .as_str()
+                            .context("client_id missing")?,
+                    ),
+                    (
+                        "client_secret",
+                        credentials["client_secret"]
+                            .as_str()
+                            .context("client_secret missing")?,
+                    ),
+                    (
+                        "refresh_token",
+                        credentials["refresh_token"]
+                            .as_str()
+                            .context("refresh_token missing")?,
+                    ),
+                ];
+                self.client
+                    .post("https://oauth2.googleapis.com/token")
+                    .form(&form)
+                    .send()
+                    .await?
+            }
+            Some("service_account") => {
+                let email = credentials["client_email"]
                     .as_str()
-                    .context("client_id missing")?,
-            ),
-            (
-                "client_secret",
-                credentials["client_secret"]
+                    .context("client_email missing")?;
+                let pem = credentials["private_key"]
                     .as_str()
-                    .context("client_secret missing")?,
-            ),
-            (
-                "refresh_token",
-                credentials["refresh_token"]
-                    .as_str()
-                    .context("refresh_token missing")?,
-            ),
-        ];
-        let response = self
-            .client
-            .post("https://oauth2.googleapis.com/token")
-            .form(&form)
-            .send()
-            .await?
-            .error_for_status()?;
-        let value: Value = response.json().await?;
-        Ok(Some(
-            value["access_token"]
-                .as_str()
-                .context("access token missing")?
-                .to_owned(),
-        ))
+                    .context("private_key missing")?;
+                let now = Utc::now().timestamp();
+                let mut header = Header::new(Algorithm::RS256);
+                header.kid = credentials["private_key_id"].as_str().map(str::to_owned);
+                let claims = json!({
+                    "iss": email,
+                    "scope": "https://www.googleapis.com/auth/datastore",
+                    "aud": "https://oauth2.googleapis.com/token",
+                    "iat": now,
+                    "exp": now + 3600
+                });
+                let assertion = encode(
+                    &header,
+                    &claims,
+                    &EncodingKey::from_rsa_pem(pem.as_bytes())?,
+                )?;
+                let form = [
+                    ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
+                    ("assertion", assertion.as_str()),
+                ];
+                self.client
+                    .post("https://oauth2.googleapis.com/token")
+                    .form(&form)
+                    .send()
+                    .await?
+            }
+            _ => anyhow::bail!("unsupported Application Default Credentials type"),
+        };
+        token_fields(response.error_for_status()?.json().await?)
     }
 
     fn request(
@@ -106,6 +153,18 @@ impl Firestore {
             builder
         }
     }
+}
+
+fn token_fields(value: Value) -> anyhow::Result<(String, u64)> {
+    Ok((
+        value["access_token"]
+            .as_str()
+            .context("access token missing")?
+            .to_owned(),
+        value["expires_in"]
+            .as_u64()
+            .context("token expiry missing")?,
+    ))
 }
 
 fn text(v: &Value, name: &str) -> anyhow::Result<String> {
