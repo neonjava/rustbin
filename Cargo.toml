@@ -23,6 +23,11 @@ tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["trace", "fs", "limit", "set-header"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+vercel_runtime = { version = "2.4", features = ["axum"] }
+
+[[bin]]
+name = "rustbin-vercel"
+path = "api/axum.rs"
 
 [dev-dependencies]
 http-body-util = "0.1"

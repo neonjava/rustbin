@@ -1,0 +1,9 @@
+target/
+.env
+.env.*
+!.env.example
+firestore.json
+*.secret.json
+service-account*.json
+credentials*.json
+.firebase/

@@ -1,12 +1,5 @@
-mod app;
-mod config;
-mod database;
-mod error;
-mod model;
-mod security;
-
 use anyhow::Context;
-use database::Firestore;
+use rustbin::{app, config, database::Firestore};
 use std::net::SocketAddr;
 use tracing_subscriber::EnvFilter;
 

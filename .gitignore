@@ -12,3 +12,5 @@ service-account*.json
 credentials*.json
 firestore.json
 *.secret.json
+
+.vercel/

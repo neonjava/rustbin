@@ -46,7 +46,10 @@ impl Firestore {
             return Ok(Some(token.clone()));
         }
         let configured = env::var_os("GOOGLE_APPLICATION_CREDENTIALS").map(PathBuf::from);
-        let (token, seconds) = if let Some(path) = configured {
+        let (token, seconds) = if let Ok(json) = env::var("FIRESTORE_SERVICE_ACCOUNT_JSON") {
+            let credentials: Value = serde_json::from_str(&json)?;
+            self.credential_access_token(&credentials).await?
+        } else if let Some(path) = configured {
             self.file_access_token(path).await?
         } else {
             let metadata = self.client.get("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token")
@@ -74,6 +77,10 @@ impl Firestore {
 
     async fn file_access_token(&self, path: PathBuf) -> anyhow::Result<(String, u64)> {
         let credentials: Value = serde_json::from_slice(&tokio::fs::read(path).await?)?;
+        self.credential_access_token(&credentials).await
+    }
+
+    async fn credential_access_token(&self, credentials: &Value) -> anyhow::Result<(String, u64)> {
         let response = match credentials["type"].as_str() {
             Some("authorized_user") => {
                 let form = [
