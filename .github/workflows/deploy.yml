@@ -8,6 +8,7 @@ permissions:
   id-token: write
 jobs:
   deploy:
+    if: ${{ vars.GCP_PROJECT_ID != '' && vars.GCP_REGION != '' && vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_DEPLOY_SERVICE_ACCOUNT != '' && vars.GCP_RUNTIME_SERVICE_ACCOUNT != '' }}
     runs-on: ubuntu-latest
     environment: production
     steps:

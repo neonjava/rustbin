@@ -6,7 +6,7 @@ use crate::{
     security,
 };
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     body::Bytes,
     extract::{ConnectInfo, Path, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
@@ -97,12 +97,12 @@ async fn rate_limit<S>(state: &AppState<S>, key: String) -> Result<(), AppError>
 
 async fn create<S: PasteStore>(
     State(state): State<Arc<AppState<S>>>,
-    address: Option<ConnectInfo<SocketAddr>>,
+    address: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<impl IntoResponse, AppError> {
     let key = address
-        .map(|a| a.0.ip().to_string())
+        .map(|a| a.0.0.ip().to_string())
         .unwrap_or_else(|| "unknown".into());
     rate_limit(&state, key).await?;
     if body.len() > state.config.max_paste_size + 1024 {
