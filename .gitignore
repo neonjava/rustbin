@@ -1,0 +1,12 @@
+/target
+.env
+.env.*
+!.env.example
+.firebase/
+firebase-debug.log
+.DS_Store
+.idea/
+.vscode/
+*.log
+service-account*.json
+credentials*.json
