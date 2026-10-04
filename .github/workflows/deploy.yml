@@ -1,0 +1,36 @@
+name: Deploy
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+      - run: cargo test
+      - run: cargo build --release
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Build and deploy Cloud Run
+        run: |
+          gcloud builds submit --tag "${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/rustbin/rustbin-api:${{ github.sha }}" .
+          gcloud run deploy rustbin-api --image "${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/rustbin/rustbin-api:${{ github.sha }}" --project "${{ vars.GCP_PROJECT_ID }}" --region "${{ vars.GCP_REGION }}" --service-account "${{ vars.GCP_RUNTIME_SERVICE_ACCOUNT }}" --set-env-vars "FIREBASE_PROJECT_ID=${{ vars.GCP_PROJECT_ID }}" --allow-unauthenticated
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Deploy Hosting
+        run: npx --yes firebase-tools@latest deploy --only hosting --project "${{ vars.GCP_PROJECT_ID }}" --non-interactive
