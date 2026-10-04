@@ -79,7 +79,7 @@ Language values: `text`, `rust`, `java`, `c`, `cpp`, `python`, `javascript`, `ty
 
 ## Deploy
 
-1. Create a Firebase project, enable Firestore Native mode, Cloud Run, Cloud Build, Artifact Registry, and Firebase Hosting. Create an Artifact Registry Docker repository named `rustbin`.
+1. Create a Firebase project and enable Firestore Native mode and Hosting. Cloud Run requires a linked Cloud Billing account, which upgrades a Spark project to Blaze; review billing before enabling it. Then enable Cloud Run, Cloud Build, and Artifact Registry. Create an Artifact Registry Docker repository named `rustbin`.
 2. Create a runtime service account with `roles/datastore.user`. Set up GitHub Actions Workload Identity Federation for `neonjava/rustbin` and a deploy service account with permissions for Cloud Build, Artifact Registry, Cloud Run deployment, Firebase Hosting deployment, and `iam.serviceAccounts.actAs` on the runtime account. Scope these grants to the project and resources as narrowly as practical.
 3. Set GitHub environment `production` variables: `GCP_PROJECT_ID`, `GCP_REGION` (`us-central1` to match `firebase.json`), `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SERVICE_ACCOUNT`, `GCP_RUNTIME_SERVICE_ACCOUNT`.
 4. Run the `Deploy` workflow or push to `main` after CI succeeds. The workflow builds a container, deploys `rustbin-api`, and deploys Hosting. Change both `firebase.json` rewrite regions if deploying Cloud Run elsewhere. Cloud Run is publicly invokable so Hosting can reach it; use ingress and edge controls appropriate to your deployment.
